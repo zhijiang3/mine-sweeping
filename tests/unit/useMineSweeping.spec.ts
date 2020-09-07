@@ -7,30 +7,18 @@ import {
 } from '@/constant';
 
 describe('扫雷核心逻辑测试', () => {
-  it('第一次点击时，不应该点击到雷', () => {
-    const size = 2;
-    const { board, onMineSweeping } = useMineSweeping({
-      rows: size,
-      cols: size,
-      mines: Math.pow(size, 2) - 1
-    });
-
-    onMineSweeping(0, 0);
-
-    const nextBoard = new Array(size).fill(0).map(() => new Array(size).fill(M));
-    nextBoard[0][0] = '3';
-    expect(board.value).toEqual(nextBoard);
-  });
-
   it('点击未挖出的空方块时，应该递归清理相邻的空方块', () => {
-    const { board, onMineSweeping } = useMineSweeping({
-      rows: 4,
-      cols: 5,
+    const { board, setSettings, onRestart, status, onMineSweeping } = useMineSweeping();
+
+    setSettings({
+      cols: 4,
+      rows: 5,
       mines: 3
     });
+    onRestart();
 
     // 处理初始化
-    onMineSweeping(0, 0);
+    status.value = 'playing';
 
     // 重新设置面板
     board.value = [
@@ -53,14 +41,17 @@ describe('扫雷核心逻辑测试', () => {
   });
 
   it('当挖到地雷方块时，地雷应该爆炸', () => {
-    const { board, onMineSweeping } = useMineSweeping({
+    const { board, status, setSettings, onRestart, onMineSweeping } = useMineSweeping();
+
+    setSettings({
       rows: 4,
       cols: 5,
       mines: 1
     });
+    onRestart();
 
     // 处理初始化
-    onMineSweeping(0, 0);
+    status.value = 'playing';
 
     // 重新设置面板
     board.value = [

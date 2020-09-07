@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, reactive, watchEffect, computed } from 'vue';
 import {
   MINE_SWEEPING_BLOCK as B,
   MINE_SWEEPING_EMPTY as E,
@@ -6,7 +6,7 @@ import {
   MINE_SWEEPING_DUG_MINE as X
 } from '@/constant';
 
-interface MineSweepingOptions {
+interface MineSweepingSettings {
   cols: number;
   rows: number;
   mines: number;
@@ -17,12 +17,6 @@ function isOutBounds(board: string[][], row: number, col: number) {
     row < 0 || row >= board.length
     || col < 0 || col >= board[0].length
   );
-}
-
-function swap<T>(arr: T[][], i: number, j: number, si: number, sj: number) {
-  const temp = arr[i][j];
-  arr[i][j] = arr[si][sj];
-  arr[si][sj] = temp;
 }
 
 const distanceRow = [-1 /** 上 */, 0 /** 左 */, 1 /** 下 */, 0 /** 右 */, 1 /** 右下 */, -1 /** 左上 */, -1 /** 右上 */, 1 /** 左下 */];
@@ -63,59 +57,111 @@ function updateBoard(board: string[][], row: number, col: number) {
   }
 }
 
-function shuffle(arr: string[][]) {
-  const rows = arr.length, cols = arr[0].length;
+function shuffle(board: string[][], clickRow: number, clickCol: number, mines: number) {
+  const rows = board.length, cols = board[0].length;
 
-  for (let row = rows - 1; row > 1; --row) {
-    for (let col = cols - 1; col > 1; --col) {
-      const random = Math.floor(Math.random() * (row * cols + col));
-      const rRow = Math.floor(random / cols);
-      const rCol = random % cols;
+  while (mines) {
+    const random = Math.floor(Math.random() * rows * cols);
+    const randomRow = Math.floor(random / cols), randomCol = Math.max(0, random - 1) % cols;
 
-      swap(arr, row, col, rRow, rCol);
+    if (randomRow !== clickRow && randomCol !== clickCol && board[randomRow][randomCol] !== M) {
+      board[randomRow][randomCol] = M;
+      mines--;
     }
   }
 }
 
-export default function useMineSweeping(options: MineSweepingOptions) {
-  const initialized = ref(false);
+function useMineSweepingSetting() {
+  const settings = reactive<MineSweepingSettings>({
+    cols: 6,
+    rows: 6,
+    mines: 4
+  });
+
+  function setSettings(options: Partial<MineSweepingSettings>) {
+    if (options.mines) settings.mines = options.mines;
+    if (options.cols) settings.cols = Math.max(6, Math.min(40, options.cols));
+    if (options.rows) settings.rows = Math.max(6, Math.min(40, options.rows));
+  }
+
+  watchEffect(() => {
+    const maxMines = (settings.rows * settings.cols) - (settings.rows + settings.cols - 1);
+
+    if (settings.mines > maxMines) settings.mines = maxMines;
+  });
+
+  return {
+    settings,
+    setSettings
+  };
+}
+
+function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
+  const status = ref<'init' | 'playing' | 'win' | 'lose'>('init');
   const board = ref<string[][]>([]);
 
-  let mines = options.mines;
-  for (let row = 0; row < options.rows; ++row) {
-    board.value[row] = [];
-    for (let col = 0; col < options.cols; ++col) {
-      board.value[row][col] = mines-- > 0 ? M : E;
+  function onRestart() {
+    status.value = 'init';
+    board.value = new Array(settings.rows);
+    for (let row = settings.rows; row > -1; --row) {
+      board.value[row] = new Array(settings.cols).fill(E);
+    }
+  }
+
+  function isGameOver() {
+    return status.value === 'lose' || status.value === 'win';
+  }
+
+  function checkGameStatus() {
+    const rows = board.value.length, cols = board.value[0].length;
+    const countMap: { [prop: string]: number } = {};
+
+    for (let row = 0; row < rows; ++row) {
+      for (let col = 0; col < cols; ++col) {
+        const block = board.value[row][col];
+
+        countMap[block] || (countMap[block] = 0);
+        countMap[block]++;
+      }
+    }
+
+    if (countMap[X] > 0) {
+      status.value = 'lose';
+    } else if (countMap[E] === 0) {
+      status.value = 'win';
     }
   }
 
   function onMineSweeping(row: number, col: number) {
-    if (isOutBounds(board.value, row, col)) return;
+    if (isOutBounds(board.value, row, col) || isGameOver()) return;
 
-    if (!initialized.value) {
-      initialized.value = true;
-      shuffle(board.value);
-
-      // 确保点击的位置是空的
-      if (board.value[row][col] === M) {
-        board.value.some((cols, rowIndex) => {
-          return cols.some((_, colIndex) => {
-            if (board.value[rowIndex][colIndex] === E) {
-              swap(board.value, row, col, rowIndex, colIndex);
-              return true;
-            }
-
-            return false;
-          });
-        });
-      }
+    if (status.value === 'init') {
+      shuffle(board.value, row, col, settings.mines);
     }
 
+    status.value = 'playing';
+
     updateBoard(board.value, row, col);
+    checkGameStatus();
   }
 
   return {
+    status,
     board,
+    onRestart,
+    onMineSweeping
+  };
+}
+
+export default function useMineSweeping() {
+  const { settings, setSettings } = useMineSweepingSetting();
+  const { board, status, onRestart, onMineSweeping } = useMineSweepingGame(settings);
+
+  return {
+    board,
+    status,
+    setSettings,
+    onRestart,
     onMineSweeping
   };
 }

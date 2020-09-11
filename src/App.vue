@@ -15,4 +15,7 @@ export default defineComponent({
 </script>
 
 <style lang="scss">
+#app {
+  display: inline-block;
+}
 </style>

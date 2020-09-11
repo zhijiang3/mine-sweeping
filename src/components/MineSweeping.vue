@@ -1,66 +1,6 @@
 <template>
   <div class="mine-sweeping-window">
-    <div
-      class="mine-sweeping-menu"
-      v-click-outside="clearActive"
-    >
-      <div
-        class="mine-sweeping-menu-item"
-        :class="{
-          'is-hover': active === 'game'
-        }"
-        @click="clickActive('game')"
-        @mouseenter="hoverActive('game')"
-      >
-        <span>游戏</span>
-
-        <div
-          class="mine-sweeping-sub-menu"
-          :class="{
-            'is-show': active === 'game'
-          }"
-        >
-          <div class="mine-sweeping-menu-item" @click="onRestart">
-            <span>重新开始</span>
-          </div>
-          <div class="mine-sweeping-menu-spacer" />
-          <div class="mine-sweeping-menu-item" @click="onEasy">
-            <span>初级</span>
-          </div>
-          <div class="mine-sweeping-menu-item" @click="onMiddle">
-            <span>中级</span>
-          </div>
-          <div class="mine-sweeping-menu-item" @click="onHard">
-            <span>高级</span>
-          </div>
-          <div class="mine-sweeping-menu-item" @click="showSetting = true">
-            <span>自定义</span>
-          </div>
-        </div>
-      </div>
-
-      <div
-        class="mine-sweeping-menu-item"
-        :class="{
-          'is-hover': active === 'help'
-        }"
-        @click="clickActive('help')"
-        @mouseenter="hoverActive('help')"
-      >
-        <span>帮助</span>
-
-        <div
-          class="mine-sweeping-sub-menu"
-          :class="{
-            'is-show': active === 'help'
-          }"
-        >
-          <div class="mine-sweeping-menu-item">
-            <span>玩法介绍</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <mine-sweeping-menu @click="onMenuClick" />
 
     <div class="mine-sweeping-main">
       <div class="mine-sweeping-panel">
@@ -97,7 +37,7 @@
               'is-gameover': isGameOver
             }"
             @mousedown="onMousedown($event, rowIndex, colIndex)"
-            @mouseup="onMouseup($event, rowIndex, colIndex)"
+            @mouseup="onMouseup(rowIndex, colIndex)"
             @contextmenu="onContextmenu"
           >
             <i
@@ -148,20 +88,30 @@
 
 <script lang="ts">
 import { defineComponent, ref, watchEffect } from 'vue';
-import {
-  useMineSweepingSetting,
-  useMineSweepingGame,
-  useMineSweepingTime,
-  useMineSweepingView
-} from '@/hooks/useMineSweeping';
-import useMenu from '@/hooks/useMenu';
+import useMineSweepingSetting from '@/hooks/useMineSweepingSetting';
+import useMineSweepingGame from '@/hooks/useMineSweepingGame';
+import useMineSweepingTime from '@/hooks/useMineSweepingTime';
+import useMineSweepingView from '@/hooks/useMineSweepingView';
+import MineSweepingMenu from '@/components/MineSweepingMenu.vue';
 
 export default defineComponent({
   name: 'MineSweeping',
+  components: {
+    MineSweepingMenu
+  },
   setup() {
-    const { active, clickActive, hoverActive, clearActive } = useMenu();
     const { settings, setSettings } = useMineSweepingSetting();
-    const { board, flags, tapBlock, status, getFlagKey, onRestart, onContextmenu, onMousedown, onMouseup } = useMineSweepingGame(settings);
+    const {
+      status,
+      board,
+      flags,
+      tapBlock,
+      getFlagKey,
+      onRestart,
+      onContextmenu,
+      onMousedown,
+      onMouseup
+    } = useMineSweepingGame(settings);
     const { stopwatchTiming } = useMineSweepingTime(status);
     const { getBlockText, isGameOver, isLoser, isWinner, isBlock, isMine, isDugMine, isMineFlag, isNullFlag, isUnknownFlag, mineFlagSize } = useMineSweepingView(status, flags);
 
@@ -184,40 +134,49 @@ export default defineComponent({
 
       return isBlock(block) && !isMine(block);
     }
-    function onEasy() {
-      setSettings({
-        rows: 8,
-        cols: 8,
-        mines: 10
-      });
-      onRestart();
-    }
-    function onMiddle() {
-      setSettings({
-        rows: 16,
-        cols: 16,
-        mines: 40
-      });
-      onRestart();
-    }
-    function onHard() {
-      setSettings({
-        rows: 16,
-        cols: 30,
-        mines: 99
-      });
-      onRestart();
+
+    function onMenuClick(key: string) {
+      switch (key) {
+        case 'easy':
+          setSettings({
+            rows: 8,
+            cols: 8,
+            mines: 10
+          });
+          onRestart();
+          break;
+        case 'middle':
+          setSettings({
+            rows: 16,
+            cols: 16,
+            mines: 40
+          });
+          onRestart();
+          break;
+        case 'hard':
+          setSettings({
+            rows: 16,
+            cols: 30,
+            mines: 99
+          });
+          onRestart();
+          break;
+        case 'custom':
+          break;
+        case 'restart':
+          onRestart();
+          break;
+      }
     }
 
     return {
+      onMenuClick,
       showSetting, settingModel, onSetting,
-      active, clickActive, hoverActive, clearActive,
       board, flags, settings, stopwatchTiming, tapBlock,
       isGameOver, isLoser, isWinner,
       isMineFlag, isNullFlag, isUnknownFlag, isBlock, isMine, isDugMine, getFlagKey, getBlockText, mineFlagSize,
       onRestart, onContextmenu, onMousedown, onMouseup,
-      checkIsBlock,
-      onEasy, onMiddle, onHard
+      checkIsBlock
     };
   }
 });
@@ -237,58 +196,6 @@ export default defineComponent({
   left: 0;
   right: 0;
   background: #BDBDBD;
-}
-
-.mine-sweeping-menu {
-  padding: 10px 8px 0;
-  display: flex;
-  position: relative;
-  background: #BDBDBD;
-
-  > .mine-sweeping-menu-item {
-    padding: 0 10px;
-    height: 24px;
-    line-height: 24px;
-    font-size: 16px;
-    cursor: default;
-    position: relative;
-
-    &.is-hover {
-      background: rgba(0, 0, 0, 0.2);
-    }
-  }
-
-  .mine-sweeping-sub-menu {
-    display: none;
-    position: absolute;
-    z-index: 2;
-    top: 100%;
-    left: 0;
-    background: #D8D8D8;
-    padding: 5px 0;
-
-    &.is-show {
-      display: block;
-    }
-
-    > .mine-sweeping-menu-item {
-      white-space: nowrap;
-      padding: 0 12px 0 20px;
-      font-size: 14px;
-
-      &:hover {
-        background: rgba(0, 0, 0, 0.1);
-      }
-    }
-  }
-
-  .mine-sweeping-menu-spacer {
-    display: block;
-    width: 100%;
-    height: 1px;
-    margin: 5px 0;
-    background: #BDBDBD;
-  }
 }
 
 .mine-sweeping-main {

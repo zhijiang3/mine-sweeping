@@ -1,4 +1,4 @@
-import { useMineSweepingGame, MineSweepingBlock, MineSweepingStatus } from '@/hooks/useMineSweeping';
+import useMineSweepingGame, { MineSweepingBlock, MineSweepingStatus } from '@/hooks/useMineSweepingGame';
 const E = MineSweepingBlock.Empty;
 const M = MineSweepingBlock.Mine;
 const B = MineSweepingBlock.Block;

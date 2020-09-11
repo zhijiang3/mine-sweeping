@@ -1,5 +1,6 @@
-import { ref, reactive, watchEffect, Ref, computed } from 'vue';
+import { ref, computed } from 'vue';
 import { isMacOS, isWindows } from '@/lib/utils';
+import { MineSweepingSettings } from '@/hooks/useMineSweepingSetting';
 
 export enum MineSweepingFlag {
   Null, // 未标记
@@ -13,11 +14,14 @@ export enum MineSweepingBlock {
   DugMine = 'X' // 挖出的地雷
 }
 export enum MineSweepingStatus { init, playing, win, lose };
-interface MineSweepingSettings {
-  cols: number;
-  rows: number;
-  mines: number;
+enum MouseEventButton {
+  Left = 1,
+  Right,
+  LeftRight
 }
+
+const distanceRow = [-1 /** 上 */, 0 /** 左 */, 1 /** 下 */, 0 /** 右 */, 1 /** 右下 */, -1 /** 左上 */, -1 /** 右上 */, 1 /** 左下 */];
+const distanceCol = [0 /** 上 */, -1 /** 左 */, 0 /** 下 */, 1 /** 右 */, 1 /** 右下 */, -1 /** 左上 */, 1 /** 右上 */, -1 /** 左下 */];
 
 function isOutBounds(board: string[][], row: number, col: number) {
   return (
@@ -40,41 +44,26 @@ function shuffle(board: string[][], clickRow: number, clickCol: number, mines: n
   }
 }
 
-export function useMineSweepingSetting() {
-  const settings = reactive<MineSweepingSettings>({
-    cols: 8,
-    rows: 8,
-    mines: 10
-  });
-
-  function setSettings(options: Partial<MineSweepingSettings>) {
-    if (options.mines) settings.mines = Math.max(10, options.mines);
-    if (options.cols) settings.cols = Math.max(8, Math.min(30, options.cols));
-    if (options.rows) settings.rows = Math.max(8, Math.min(24, options.rows));
-  }
-
-  watchEffect(() => {
-    const maxMines = (settings.rows - 1) * (settings.cols - 1);
-
-    if (settings.mines > maxMines) settings.mines = maxMines;
-  });
-
-  return {
-    settings,
-    setSettings
-  };
+function isNumberBlock(block: string) {
+  return /[0-9]/.test(block);
 }
 
-const distanceRow = [-1 /** 上 */, 0 /** 左 */, 1 /** 下 */, 0 /** 右 */, 1 /** 右下 */, -1 /** 左上 */, -1 /** 右上 */, 1 /** 左下 */];
-const distanceCol = [0 /** 上 */, -1 /** 左 */, 0 /** 下 */, 1 /** 右 */, 1 /** 右下 */, -1 /** 左上 */, 1 /** 右上 */, -1 /** 左下 */];
+function isEmptyOrMine(block: string) {
+  return block === MineSweepingBlock.Empty || block === MineSweepingBlock.Mine;
+}
+
 const tapBlock = ref(new Set<number>());
 document.addEventListener('mouseup', () => {
   tapBlock.value.clear();
 });
-export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
+export default function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
   const status = ref<MineSweepingStatus>(MineSweepingStatus.init);
   const board = ref<string[][]>([]);
   const flags = ref(new Map<number, number>());
+
+  const isGameOver = computed(() => {
+    return status.value === MineSweepingStatus.lose || status.value === MineSweepingStatus.win;
+  });
 
   function onRestart() {
     status.value = MineSweepingStatus.init;
@@ -89,15 +78,14 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
     return settings.cols * row + col;
   }
 
-  function isGameOver() {
-    return status.value === MineSweepingStatus.lose || status.value === MineSweepingStatus.win;
+  function isNullFlag(flatKey: number): boolean;
+  function isNullFlag(row: number, col: number): boolean;
+  function isNullFlag(row: number, col?: number) {
+    const flagKey = typeof col === 'undefined' ? row : getFlagKey(row, col as number);
+    return !flags.value.has(flagKey) || flags.value.get(flagKey) === MineSweepingFlag.Null;
   }
 
-  function isNumber(block: string) {
-    return /[0-9]/.test(block);
-  }
-
-  function checkGameStatus() {
+  function updateGameStatus() {
     const rows = board.value.length, cols = board.value[0].length;
     const countMap: { [prop: string]: number } = {
       [MineSweepingBlock.DugMine]: 0,
@@ -111,7 +99,7 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
         const block = board.value[row][col];
 
         // 清理被标记了的已挖出的空方块
-        if (block === MineSweepingBlock.Block || isNumber(block)) {
+        if (block === MineSweepingBlock.Block || isNumberBlock(block)) {
           const key = getFlagKey(row, col);
 
           if (flags.value.has(key)) flags.value.delete(key);
@@ -167,8 +155,7 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
 
   function onMineSweeping(row: number, col: number) {
     // 被标记的无法点击
-    const flagKey = getFlagKey(row, col);
-    if (flags.value.has(flagKey) && flags.value.get(flagKey) !== MineSweepingFlag.Null) return;
+    if (!isNullFlag(row, col)) return;
 
     if (status.value === MineSweepingStatus.init) {
       shuffle(board.value, row, col, settings.mines);
@@ -177,13 +164,13 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
     status.value = MineSweepingStatus.playing;
 
     updateBoard(row, col);
-    checkGameStatus();
+    updateGameStatus();
   }
 
   function onMarkFlag(row: number, col: number) {
     const block = board.value[row][col];
 
-    if (block === MineSweepingBlock.Empty || block === MineSweepingBlock.Mine) {
+    if (isEmptyOrMine(block)) {
       const key = getFlagKey(row, col);
 
       if (flags.value.has(key)) {
@@ -203,35 +190,29 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
   let buttons = 0;
   let clickKey = -1;
   function onMousedown(event: MouseEvent, row: number, col: number) {
-    if (isGameOver()) return;
+    if (isGameOver.value) return;
 
     buttons = event.buttons;
     clickKey = getFlagKey(row, col)
 
-    if (buttons === 1) {
-      if (isMacOS && event.metaKey) buttons = 3;
-      if (isWindows && event.ctrlKey) buttons = 3;
+    if (buttons === MouseEventButton.Left) {
+      if (isMacOS && event.metaKey) buttons = MouseEventButton.LeftRight;
+      if (isWindows && event.ctrlKey) buttons = MouseEventButton.LeftRight;
     }
 
     switch (buttons) {
-      case 1:
-        if (!flags.value.has(clickKey) || flags.value.get(clickKey) === MineSweepingFlag.Null)
-          tapBlock.value.add(getFlagKey(row, col));
+      case MouseEventButton.Left:
+        if (isNullFlag(row, col)) tapBlock.value.add(getFlagKey(row, col));
         break;
-      case 3:
+      case MouseEventButton.LeftRight:
         // highlight around block
-        if (isNumber(board.value[row][col])) {
+        if (isNumberBlock(board.value[row][col])) {
           for (let i = 0; i < distanceRow.length; ++i) {
             const dr = row + distanceRow[i];
             const dc = col + distanceCol[i];
             const flagKey = getFlagKey(dr, dc);
 
-            if (!isOutBounds(board.value, dr, dc)
-              && (board.value[dr][dc] === MineSweepingBlock.Empty
-                || board.value[dr][dc] === MineSweepingBlock.Mine)
-              && (!flags.value.has(flagKey)
-                || flags.value.get(flagKey) === MineSweepingFlag.Null)) {
-
+            if (!isOutBounds(board.value, dr, dc) && isEmptyOrMine(board.value[dr][dc]) && isNullFlag(flagKey)) {
               tapBlock.value.add(flagKey);
             }
           }
@@ -239,18 +220,18 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
         break;
     }
   }
-  function onMouseup(event: MouseEvent, row: number, col: number) {
-    if (isOutBounds(board.value, row, col) || isGameOver() || getFlagKey(row, col) !== clickKey) return;
+  function onMouseup(row: number, col: number) {
+    if (isOutBounds(board.value, row, col) || isGameOver.value || getFlagKey(row, col) !== clickKey) return;
 
     switch (buttons) {
-      case 1: // 左键
+      case MouseEventButton.Left:
         onMineSweeping(row, col);
         break;
-      case 2: // 右键
+      case MouseEventButton.Right:
         onMarkFlag(row, col);
         break;
-      case 3: // 左右键一起按下
-        if (isNumber(board.value[row][col])) {
+      case MouseEventButton.LeftRight:
+        if (isNumberBlock(board.value[row][col])) {
           const unFlags = [];
           let flagMines = 0;
           for (let i = 0; i < distanceRow.length; ++i) {
@@ -258,11 +239,8 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
             const dc = col + distanceCol[i];
             const flagKey = getFlagKey(dr, dc);
 
-            if (!isOutBounds(board.value, dr, dc)
-              && (board.value[dr][dc] === MineSweepingBlock.Empty
-                || board.value[dr][dc] === MineSweepingBlock.Mine)) {
-              if (!flags.value.has(flagKey) || flags.value.get(flagKey) === MineSweepingFlag.Null)
-                unFlags.push([dr, dc]);
+            if (!isOutBounds(board.value, dr, dc) && isEmptyOrMine(board.value[dr][dc])) {
+              if (isNullFlag(flagKey)) unFlags.push([dr, dc]);
 
               if (flags.value.get(flagKey) === MineSweepingFlag.Mine) flagMines++;
             }
@@ -271,7 +249,7 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
           // 如果已标示旗帜的数目与数字相同，未开的方块就会自动打开
           if (parseInt(board.value[row][col]) === flagMines) {
             unFlags.forEach(([dr, dc]) => updateBoard(dr, dc));
-            checkGameStatus();
+            updateGameStatus();
           }
         }
         break;
@@ -286,110 +264,10 @@ export function useMineSweepingGame(settings: Readonly<MineSweepingSettings>) {
     flags,
     tapBlock,
     getFlagKey,
+    onMineSweeping,
     onRestart,
     onContextmenu,
     onMousedown,
     onMouseup
-  };
-}
-
-export function useMineSweepingTime(status: Ref<MineSweepingStatus>) {
-  const startTime = ref(0);
-  const stopwatchTiming = ref(0);
-  let stopwatchTimer: number;
-  function runStopwatchTiming() {
-    stopwatchTiming.value = Date.now() - startTime.value;
-
-    stopwatchTimer = setTimeout(runStopwatchTiming, 1000);
-  }
-  function clearStopwatchTiming() {
-    clearTimeout(stopwatchTimer);
-  }
-  watchEffect(() => {
-    switch (status.value) {
-      case MineSweepingStatus.init:
-        stopwatchTiming.value = 0;
-        clearStopwatchTiming();
-        break;
-      case MineSweepingStatus.playing:
-        startTime.value = Date.now();
-        runStopwatchTiming();
-        break;
-      case MineSweepingStatus.lose:
-      case MineSweepingStatus.win:
-        clearStopwatchTiming();
-        break;
-    }
-  });
-
-  return {
-    startTime,
-    stopwatchTiming
-  };
-}
-
-export function useMineSweepingView(status: Ref<MineSweepingStatus>, flags: Ref<Map<number, number>>) {
-  const isLoser = computed(() => status.value === MineSweepingStatus.lose);
-  const isWinner = computed(() => status.value === MineSweepingStatus.win);
-  const isGameOver = computed(() => isLoser.value || isWinner.value);
-
-  function isDugMine(block: string) {
-    return block === MineSweepingBlock.DugMine;
-  }
-
-  function isMine(block: string) {
-    return block === MineSweepingBlock.Mine || isDugMine(block);
-  }
-
-  function isBlock(block: string) {
-    return block === MineSweepingBlock.Empty || isMine(block);
-  }
-
-  function isMineFlag(key: number) {
-    return flags.value.get(key) === MineSweepingFlag.Mine;
-  }
-
-  function isNullFlag(key: number) {
-    if (!flags.value.has(key)) return true;
-
-    return flags.value.get(key) === MineSweepingFlag.Null;
-  }
-
-  function isUnknownFlag(key: number) {
-    return flags.value.get(key) === MineSweepingFlag.Unknown;
-  }
-
-  function getBlockText(block: string) {
-    switch (block) {
-      case MineSweepingBlock.Mine:
-      case MineSweepingBlock.DugMine:
-      case MineSweepingBlock.Empty:
-      case MineSweepingBlock.Block:
-        return '';
-      default:
-        return block;
-    }
-  }
-
-  const mineFlagSize = computed(() => {
-    let size = 0;
-    for (const key of flags.value.keys()) {
-      if (flags.value.get(key) === MineSweepingFlag.Mine) size++;
-    }
-    return size;
-  });
-
-  return {
-    getBlockText,
-    isGameOver,
-    isLoser,
-    isWinner,
-    isBlock,
-    isMine,
-    isDugMine,
-    isMineFlag,
-    isNullFlag,
-    isUnknownFlag,
-    mineFlagSize
   };
 }

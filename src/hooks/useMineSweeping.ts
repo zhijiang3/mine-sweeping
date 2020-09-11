@@ -48,13 +48,13 @@ export function useMineSweepingSetting() {
   });
 
   function setSettings(options: Partial<MineSweepingSettings>) {
-    if (options.mines) settings.mines = options.mines;
-    if (options.cols) settings.cols = Math.max(6, Math.min(40, options.cols));
-    if (options.rows) settings.rows = Math.max(6, Math.min(40, options.rows));
+    if (options.mines) settings.mines = Math.max(10, options.mines);
+    if (options.cols) settings.cols = Math.max(8, Math.min(30, options.cols));
+    if (options.rows) settings.rows = Math.max(8, Math.min(24, options.rows));
   }
 
   watchEffect(() => {
-    const maxMines = (settings.rows * settings.cols) - (settings.rows + settings.cols - 1);
+    const maxMines = (settings.rows - 1) * (settings.cols - 1);
 
     if (settings.mines > maxMines) settings.mines = maxMines;
   });

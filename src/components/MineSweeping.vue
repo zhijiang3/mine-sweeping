@@ -23,26 +23,40 @@
           <div class="mine-sweeping-menu-item" @click="onRestart">
             <span>重新开始</span>
           </div>
+          <div class="mine-sweeping-menu-spacer" />
+          <div class="mine-sweeping-menu-item" @click="onEasy">
+            <span>初级</span>
+          </div>
+          <div class="mine-sweeping-menu-item" @click="onMiddle">
+            <span>中级</span>
+          </div>
+          <div class="mine-sweeping-menu-item" @click="onHard">
+            <span>高级</span>
+          </div>
+          <div class="mine-sweeping-menu-item" @click="showSetting = true">
+            <span>自定义</span>
+          </div>
         </div>
       </div>
+
       <div
         class="mine-sweeping-menu-item"
         :class="{
-          'is-hover': active === 'setting'
+          'is-hover': active === 'help'
         }"
-        @click="clickActive('setting')"
-        @mouseenter="hoverActive('setting')"
+        @click="clickActive('help')"
+        @mouseenter="hoverActive('help')"
       >
-        <span>设置</span>
+        <span>帮助</span>
 
         <div
           class="mine-sweeping-sub-menu"
           :class="{
-            'is-show': active === 'setting'
+            'is-show': active === 'help'
           }"
         >
-          <div class="mine-sweeping-menu-item" @click="showSetting = true">
-            <span>游戏设置</span>
+          <div class="mine-sweeping-menu-item">
+            <span>玩法介绍</span>
           </div>
         </div>
       </div>
@@ -50,9 +64,20 @@
 
     <div class="mine-sweeping-main">
       <div class="mine-sweeping-panel">
-        <span>时间：{{ Math.floor(stopwatchTiming / 1000) }}s</span>
+        <div class="mine-sweeping-clock">
+          <i class="iconfont icon-clock" />
+          <span>{{ Math.floor(stopwatchTiming / 1000) }}s</span>
+        </div>
+
+        <div class="mine-sweeping-face">
+        </div>
+
         <span>{{ isWinner ? '你赢了' : isLoser ? '你输啦' : '游戏中' }}</span>
-        <span>地雷：{{ settings.mines - flags.size }}</span>
+
+        <div class="mine-sweeping-mine-count">
+          <i class="iconfont icon-mine" />
+          <span>{{ settings.mines - mineFlagSize }}</span>
+        </div>
       </div>
 
       <div class="mine-sweeping-content">
@@ -66,20 +91,37 @@
             :key="`${rowIndex}-${colIndex}`"
             class="mine-sweeping-block"
             :class="{
-              'is-block': isBlock(block),
-              'is-flag': isBlock(block) && flags.has(getFlagKey(rowIndex, colIndex)),
-              'is-gameover': isGameOver,
-              'is-mine': isGameOver && isMine(block)
+              'is-block': checkIsBlock(block, rowIndex, colIndex),
+              'is-dug-mine': isDugMine(block),
+              'is-tap': tapBlock.has(getFlagKey(rowIndex, colIndex)),
+              'is-gameover': isGameOver
             }"
-            @click="onMineSweeping(rowIndex, colIndex)"
-            @contextmenu="onMarkFlag($event, rowIndex, colIndex)"
-          >{{ getBlockText(block) }}</span>
+            @mousedown="onMousedown($event, rowIndex, colIndex)"
+            @mouseup="onMouseup($event, rowIndex, colIndex)"
+            @contextmenu="onContextmenu"
+          >
+            <i
+              v-if="(isWinner && isMine(block)) || !isLoser && isMineFlag(getFlagKey(rowIndex, colIndex))"
+              class="mine-sweeping-flag iconfont icon-flag2"
+            />
+            <i
+              v-if="isLoser && isMine(block)"
+              class="mine-sweeping-mine iconfont icon-mine"
+            />
+            <i
+              v-if="!(isGameOver && isMine(block)) && isUnknownFlag(getFlagKey(rowIndex, colIndex))"
+            >?</i>
+            <i
+              v-if="isLoser && !isMine(block) && isMineFlag(getFlagKey(rowIndex, colIndex))"
+            >x</i>
+            <span>{{ getBlockText(block) }}</span>
+          </span>
         </div>
       </div>
     </div>
 
     <div v-if="showSetting" class="mine-sweeping-setting">
-      <h3>游戏设置</h3>
+      <h3><i class="iconfont icon-setting" />游戏设置</h3>
 
       <form @submit.prevent>
         <div>
@@ -105,10 +147,11 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, watchEffect, reactive } from 'vue';
+import { defineComponent, ref, watchEffect } from 'vue';
 import {
   useMineSweepingSetting,
   useMineSweepingGame,
+  useMineSweepingTime,
   useMineSweepingView
 } from '@/hooks/useMineSweeping';
 import useMenu from '@/hooks/useMenu';
@@ -118,10 +161,9 @@ export default defineComponent({
   setup() {
     const { active, clickActive, hoverActive, clearActive } = useMenu();
     const { settings, setSettings } = useMineSweepingSetting();
-    const { board, flags, status, stopwatchTiming, getFlagKey, onRestart, onMineSweeping, onMarkFlag } = useMineSweepingGame(settings);
-    const { getBlockText, isGameOver, isLoser, isWinner, isBlock, isMine } = useMineSweepingView(status);
-
-    onRestart();
+    const { board, flags, tapBlock, status, getFlagKey, onRestart, onContextmenu, onMousedown, onMouseup } = useMineSweepingGame(settings);
+    const { stopwatchTiming } = useMineSweepingTime(status);
+    const { getBlockText, isGameOver, isLoser, isWinner, isBlock, isMine, isDugMine, isMineFlag, isNullFlag, isUnknownFlag, mineFlagSize } = useMineSweepingView(status, flags);
 
     const showSetting = ref(false);
     const settingModel = ref({ ...settings });
@@ -135,14 +177,47 @@ export default defineComponent({
       onRestart();
       showSetting.value = false;
     }
+    function checkIsBlock(block: string, rowIndex: number, colIndex: number) {
+      if (!isLoser.value) return isBlock(block);
+
+      if (!isMine(block) && isMineFlag(getFlagKey(rowIndex, colIndex))) return false;
+
+      return isBlock(block) && !isMine(block);
+    }
+    function onEasy() {
+      setSettings({
+        rows: 8,
+        cols: 8,
+        mines: 10
+      });
+      onRestart();
+    }
+    function onMiddle() {
+      setSettings({
+        rows: 16,
+        cols: 16,
+        mines: 40
+      });
+      onRestart();
+    }
+    function onHard() {
+      setSettings({
+        rows: 16,
+        cols: 30,
+        mines: 99
+      });
+      onRestart();
+    }
 
     return {
       showSetting, settingModel, onSetting,
       active, clickActive, hoverActive, clearActive,
-      board, flags, settings, stopwatchTiming,
+      board, flags, settings, stopwatchTiming, tapBlock,
       isGameOver, isLoser, isWinner,
-      isBlock, isMine, getFlagKey, getBlockText, setSettings,
-      onRestart, onMarkFlag, onMineSweeping
+      isMineFlag, isNullFlag, isUnknownFlag, isBlock, isMine, isDugMine, getFlagKey, getBlockText, mineFlagSize,
+      onRestart, onContextmenu, onMousedown, onMouseup,
+      checkIsBlock,
+      onEasy, onMiddle, onHard
     };
   }
 });
@@ -186,10 +261,11 @@ export default defineComponent({
   .mine-sweeping-sub-menu {
     display: none;
     position: absolute;
+    z-index: 2;
     top: 100%;
     left: 0;
     background: #D8D8D8;
-    padding: 4px 0;
+    padding: 5px 0;
 
     &.is-show {
       display: block;
@@ -197,13 +273,21 @@ export default defineComponent({
 
     > .mine-sweeping-menu-item {
       white-space: nowrap;
-      padding: 0 10px 0 20px;
+      padding: 0 12px 0 20px;
       font-size: 14px;
 
       &:hover {
         background: rgba(0, 0, 0, 0.1);
       }
     }
+  }
+
+  .mine-sweeping-menu-spacer {
+    display: block;
+    width: 100%;
+    height: 1px;
+    margin: 5px 0;
+    background: #BDBDBD;
   }
 }
 
@@ -224,8 +308,6 @@ export default defineComponent({
   .mine-sweeping-panel {
     margin-bottom: 10px;
     padding: 6px;
-    display: flex;
-    justify-content: space-between;
   }
 
   .mine-sweeping-rows {
@@ -233,22 +315,26 @@ export default defineComponent({
   }
 
   .mine-sweeping-block {
+    outline: none;
     border-bottom: 2px solid #7B7B7B;
     border-right: 2px solid #7B7B7B;
     width: 48px;
     height: 48px;
-    text-align: center;
-    line-height: 48px;
     font-size: 28px;
     box-sizing: border-box;
     user-select: none;
     position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 
     &.is-block:not(.is-gameover) {
       cursor: pointer;
     }
-    &.is-block:not(.is-gameover):hover {
-      background: rgba(255, 255, 255, 0.3);
+    &.is-block:not(.is-gameover).is-tap {
+      &::after {
+        border-color: transparent;
+      }
     }
     &:last-child {
       border-right: none;
@@ -274,12 +360,8 @@ export default defineComponent({
     &.is-block:last-child::after {
       border-right-width: 3px;
     }
-    &.is-flag {
-      background: rgba(0, 0, 0, 0.2);
-      border-color: red;
-    }
-    &.is-mine {
-      color: red;
+    &.is-dug-mine {
+      color: #FC284F;
     }
   }
   .mine-sweeping-rows:last-child .mine-sweeping-block {
@@ -287,6 +369,13 @@ export default defineComponent({
   }
   .mine-sweeping-rows:last-child .mine-sweeping-block.is-block::after {
     border-bottom-width: 3px;
+  }
+  .mine-sweeping-flag {
+    font-size: 26px;
+    color: #FC284F;
+  }
+  .mine-sweeping-mine {
+    font-size: 28px;
   }
 }
 </style>

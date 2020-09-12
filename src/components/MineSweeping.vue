@@ -41,11 +41,11 @@
             @contextmenu="onContextmenu"
           >
             <i
-              v-if="(isWinner && isMine(block)) || !isLoser && isMineFlag(getFlagKey(rowIndex, colIndex))"
+              v-if="(isLoser && isMine(block) && isMineFlag(getFlagKey(rowIndex, colIndex))) || (isWinner && isMine(block)) || !isGameOver && isMineFlag(getFlagKey(rowIndex, colIndex))"
               class="mine-sweeping-flag iconfont icon-flag2"
             />
             <i
-              v-if="isLoser && isMine(block)"
+              v-if="isLoser && isMine(block) && !isMineFlag(getFlagKey(rowIndex, colIndex))"
               class="mine-sweeping-mine iconfont icon-mine"
             />
             <i
@@ -128,6 +128,8 @@ export default defineComponent({
       showSetting.value = false;
     }
     function checkIsBlock(block: string, rowIndex: number, colIndex: number) {
+      if (isLoser.value && isMine(block) && isMineFlag(getFlagKey(rowIndex, colIndex))) return true;
+
       if (!isLoser.value) return isBlock(block);
 
       if (!isMine(block) && isMineFlag(getFlagKey(rowIndex, colIndex))) return false;
